@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+
+
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id              BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  name            String     @db.VarChar(100)
+  email           String     @unique @db.VarChar(255)
+  avatarUrl       String?    @map("avatar_url") @db.VarChar(2048)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.DateTime(3)
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+authAccounts       AuthAccount[]
+authSessions       AuthSession[]
+verificationTokens VerificationToken[]
+platformAdmin      PlatformAdmin?
+createdWorkspaces    Workspace[]
+workspaceMemberships WorkspaceMember[]
+sentInvitations      WorkspaceInvitation[]
+createdProjects    Project[]
+projectMemberships ProjectMember[]
+assignedTasks Task[] @relation("TaskAssignee")
+createdTasks  Task[] @relation("TaskCreator")
+taskComments    TaskComment[]
+taskActivities  TaskActivity[]
+commentMentions CommentMention[]
+notifications   Notification[]
+
+  @@map("users")
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+model AuthAccount {
+  id                BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  userId            BigInt       @map("user_id") @db.UnsignedBigInt
+  provider          AuthProvider
+  providerAccountId String       @map("provider_account_id") @db.VarChar(255)
+  passwordHash      String?      @map("password_hash") @db.VarChar(255)
+  createdAt         DateTime     @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@map("auth_accounts")
+}
+
+model AuthSession {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId           BigInt    @map("user_id") @db.UnsignedBigInt
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(255)
+  expiresAt        DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt        DateTime? @map("revoked_at") @db.DateTime(3)
+  createdAt        DateTime  @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
+  @@map("auth_sessions")
+}
+
+enum VerificationPurpose {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+model VerificationToken {
+  id        BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  userId    BigInt              @map("user_id") @db.UnsignedBigInt
+  tokenHash String              @unique @map("token_hash") @db.VarChar(255)
+  purpose   VerificationPurpose
+  expiresAt DateTime            @map("expires_at") @db.DateTime(3)
+  usedAt    DateTime?           @map("used_at") @db.DateTime(3)
+  createdAt DateTime            @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, purpose, expiresAt])
+  @@map("verification_tokens")
+}
+
+enum PlanCode {
+  FREE
+  PRO
+}
+
+model Plan {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  name        String   @db.VarChar(100)
+  code        PlanCode @unique
+  maxProjects Int      @map("max_projects")
+  maxMembers  Int      @map("max_members")
+  maxTasks    Int      @map("max_tasks")
+  createdAt   DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspaces Workspace[]
+
+  @@map("plans")
+}
+
+enum ProjectTemplateCode {
+  BLANK
+  SOFTWARE_DEVELOPMENT
+  BUG_TRACKING
+}
+
+model ProjectTemplate {
+  id            BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  name          String              @db.VarChar(100)
+  code          ProjectTemplateCode @unique
+  description   String?             @db.Text
+  configuration Json
+  createdAt     DateTime            @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+
+  projects Project[]
+
+  @@map("project_templates")
+}
+
+model PlatformAdmin {
+  userId    BigInt   @id @map("user_id") @db.UnsignedBigInt
+  createdAt DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("platform_admins")
+}
+
+model Workspace {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  name        String   @db.VarChar(120)
+  slug        String   @unique @db.VarChar(120)
+  description String?  @db.Text
+  createdBy   BigInt   @map("created_by") @db.UnsignedBigInt
+  planId      BigInt   @map("plan_id") @db.UnsignedBigInt
+  createdAt   DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  creator     User                  @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  plan        Plan                  @relation(fields: [planId], references: [id], onDelete: Restrict)
+  members     WorkspaceMember[]
+  invitations WorkspaceInvitation[]
+  projects Project[]
+  notifications Notification[]
+
+  @@index([createdBy])
+  @@index([planId])
+  @@map("workspaces")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model WorkspaceMember {
+  id          BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  workspaceId BigInt        @map("workspace_id") @db.UnsignedBigInt
+  userId      BigInt        @map("user_id") @db.UnsignedBigInt
+  role        WorkspaceRole
+  joinedAt    DateTime      @default(dbgenerated("(utc_timestamp(3))")) @map("joined_at") @db.DateTime(3)
+  ownerWorkspaceId BigInt?  @unique(map: "workspace_members_one_owner_key") @map("owner_workspace_id") @db.UnsignedBigInt @ignore
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, userId])
+  @@index([userId, workspaceId])
+  @@map("workspace_members")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  REVOKED
+  EXPIRED
+}
+
+enum InvitationRole {
+  ADMIN
+  MEMBER
+}
+
+model WorkspaceInvitation {
+  id          BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  workspaceId BigInt           @map("workspace_id") @db.UnsignedBigInt
+  email       String           @db.VarChar(255)
+  role        InvitationRole
+  tokenHash   String           @unique @map("token_hash") @db.VarChar(255)
+  status      InvitationStatus @default(PENDING)
+  invitedBy   BigInt           @map("invited_by") @db.UnsignedBigInt
+  expiresAt   DateTime         @map("expires_at") @db.DateTime(3)
+  respondedAt DateTime?        @map("responded_at") @db.DateTime(3)
+  createdAt   DateTime         @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  inviter   User      @relation(fields: [invitedBy], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, status])
+  @@index([email, status])
+  @@map("workspace_invitations")
+}
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+model Project {
+  id             BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  workspaceId    BigInt        @map("workspace_id") @db.UnsignedBigInt
+  templateId     BigInt?       @map("template_id") @db.UnsignedBigInt
+  name           String        @db.VarChar(150)
+  projectKey     String        @map("project_key") @db.VarChar(12)
+  description    String?       @db.Text
+  status         ProjectStatus @default(PLANNED)
+  deadline       DateTime?     @db.Date
+  createdBy      BigInt        @map("created_by") @db.UnsignedBigInt
+  nextTaskNumber BigInt        @default(1) @map("next_task_number") @db.UnsignedBigInt
+  archivedAt     DateTime?     @map("archived_at") @db.DateTime(3)
+  deletedAt      DateTime?     @map("deleted_at") @db.DateTime(3)
+  createdAt      DateTime      @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  template  ProjectTemplate? @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  creator   User             @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  members   ProjectMember[]
+  statuses  ProjectWorkflowStatus[]
+  tasks  Task[]
+labels Label[]
+
+  @@unique([workspaceId, projectKey])
+  @@index([workspaceId, deletedAt, status])
+  @@index([createdBy])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  projectId BigInt   @map("project_id") @db.UnsignedBigInt
+  userId    BigInt   @map("user_id") @db.UnsignedBigInt
+  joinedAt  DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("joined_at") @db.DateTime(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+  @@index([userId, projectId])
+  @@map("project_members")
+}
+
+enum StatusCategory {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model ProjectWorkflowStatus {
+  id        BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  projectId BigInt         @map("project_id") @db.UnsignedBigInt
+  name      String         @db.VarChar(50)
+  category  StatusCategory
+  position  Int
+  createdAt DateTime       @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  tasks Task[]
+
+  @@unique([projectId, name])
+  @@unique([projectId, id])
+  @@index([projectId, position])
+  @@map("project_statuses")
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id           BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  projectId    BigInt       @map("project_id") @db.UnsignedBigInt
+  taskNumber   BigInt       @map("task_number") @db.UnsignedBigInt
+  title        String       @db.VarChar(255)
+  description  String?      @db.Text
+  statusId     BigInt       @map("status_id") @db.UnsignedBigInt
+  priority     TaskPriority @default(MEDIUM)
+  assigneeId   BigInt?      @map("assignee_id") @db.UnsignedBigInt
+  parentTaskId BigInt?      @map("parent_task_id") @db.UnsignedBigInt
+  dueDate      DateTime?    @map("due_date") @db.Date
+  position     Decimal      @db.Decimal(20, 6)
+  createdBy    BigInt       @map("created_by") @db.UnsignedBigInt
+  deletedAt    DateTime?    @map("deleted_at") @db.DateTime(3)
+  createdAt    DateTime     @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project    Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  status     ProjectWorkflowStatus @relation(fields: [projectId, statusId], references: [projectId, id], onDelete: Restrict)
+  assignee   User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  creator    User                  @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  parentTask Task?                 @relation("TaskSubtasks", fields: [projectId, parentTaskId], references: [projectId, id], onDelete: Restrict, onUpdate: Restrict)
+  subtasks   Task[]                @relation("TaskSubtasks")
+  taskLabels TaskLabel[]
+  comments   TaskComment[]
+activities TaskActivity[]
+
+  @@unique([projectId, taskNumber])
+  @@unique([projectId, id])
+  @@index([projectId, statusId, position])
+  @@index([assigneeId, deletedAt, dueDate])
+  @@index([projectId, deletedAt])
+  @@map("tasks")
+}
+
+model Label {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  projectId BigInt   @map("project_id") @db.UnsignedBigInt
+  name      String   @db.VarChar(50)
+  color     String   @db.Char(7)
+  createdAt DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  taskLabels TaskLabel[]
+
+  @@unique([projectId, name])
+  @@unique([projectId, id])
+  @@map("labels")
+}
+
+model TaskLabel {
+  projectId BigInt @map("project_id") @db.UnsignedBigInt
+  taskId    BigInt @map("task_id") @db.UnsignedBigInt
+  labelId   BigInt @map("label_id") @db.UnsignedBigInt
+
+  task  Task  @relation(fields: [projectId, taskId], references: [projectId, id], onDelete: Restrict)
+  label Label @relation(fields: [projectId, labelId], references: [projectId, id], onDelete: Restrict)
+
+  @@id([taskId, labelId])
+  @@index([projectId, labelId])
+  @@map("task_labels")
+}
+
+model TaskComment {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  taskId          BigInt   @map("task_id") @db.UnsignedBigInt
+  userId          BigInt   @map("user_id") @db.UnsignedBigInt
+  parentCommentId BigInt?  @map("parent_comment_id") @db.UnsignedBigInt
+  content         String   @db.Text
+  createdAt       DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  task          Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  parentComment TaskComment?     @relation("CommentReplies", fields: [taskId, parentCommentId], references: [taskId, id], onDelete: Restrict, onUpdate: Restrict)
+  replies       TaskComment[]    @relation("CommentReplies")
+  mentions      CommentMention[]
+
+  @@unique([taskId, id])
+  @@index([taskId, createdAt])
+  @@map("task_comments")
+}
+
+model TaskActivity {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  taskId    BigInt   @map("task_id") @db.UnsignedBigInt
+  actorId   BigInt   @map("actor_id") @db.UnsignedBigInt
+  action    String   @db.VarChar(50)
+  oldValue  Json?    @map("old_value")
+  newValue  Json?    @map("new_value")
+  createdAt DateTime @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+
+  task  Task @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, createdAt])
+  @@map("task_activities")
+}
+
+model CommentMention {
+  commentId BigInt @map("comment_id") @db.UnsignedBigInt
+  userId    BigInt @map("user_id") @db.UnsignedBigInt
+
+  comment TaskComment @relation(fields: [commentId], references: [id], onDelete: Restrict)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([commentId, userId])
+  @@index([userId])
+  @@map("comment_mentions")
+}
+
+model Notification {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId      BigInt    @map("user_id") @db.UnsignedBigInt
+  workspaceId BigInt    @map("workspace_id") @db.UnsignedBigInt
+  type        String    @db.VarChar(50)
+  title       String    @db.VarChar(255)
+  message     String    @db.Text
+  data        Json?
+  readAt      DateTime? @map("read_at") @db.DateTime(3)
+  createdAt   DateTime  @default(dbgenerated("(utc_timestamp(3))")) @map("created_at") @db.DateTime(3)
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@index([userId, readAt, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("notifications")
+}
